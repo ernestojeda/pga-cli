@@ -82,6 +82,7 @@ def get_score_as_int(score_txt):
     try:
         final_score = int(score_txt)
     except:
+        final_score = None
         pass
 
     return final_score
@@ -102,7 +103,10 @@ def generate_table(args) -> Table:
     for player in players:
         standing = player['standing']
         if standing is not None:
-            standing = int(standing.replace('T', ''))
+            try:
+                standing = int(standing.replace('T', '').replace('-', ''))
+            except:
+                standing = 1000
 
         if (standing is None and args.top is None) or standing <= args.top:
             if player['is_cut'] and not cutline_added:
