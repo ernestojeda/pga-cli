@@ -32,6 +32,7 @@ def get_player_data():
     for row in rows:
         data = list(row.children)
         # tournament has not started
+        # TODO: reimpliment this code
         if len(data) == 3:
             standing = f'{index}' # <-- this is not not technically accurate since they are all tied, but allows for easy filtering
             player = data[1].text
@@ -39,6 +40,13 @@ def get_player_data():
             today = None
             thru = data[2].text
             t_round = 0
+        elif len(data) == 11:
+            standing = data[1].text
+            player = data[2].text
+            score = data[3].text
+            today = None
+            thru = None
+            t_round = 1
         elif len(data) > 5:
             standing = data[1].text
             player = data[3].text
