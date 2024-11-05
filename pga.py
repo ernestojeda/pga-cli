@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 import requests
 import time
+import re
 from argparse import ArgumentParser
 from bs4 import BeautifulSoup
 from rich.live import Live
 from rich.table import Table
-
 
 def get_player_data():
     """Get player data from ESPN"""
@@ -20,41 +20,80 @@ def get_player_data():
     cutline = None
     if cutline_row:
         cutline_data = list(cutline_row[0].children)
-        cutline_text = cutline_data[0].text.replace(
-            'Projected Cut', '')
-
-        cutline = get_score_as_int(cutline_text)
+        cutline_text = cutline_data[0].text.replace('Projected Cut', '')
+        cutline = get_as_int(cutline_text)
 
     rows = soup.find_all('tr', ['PlayerRow__Overview'])
     lowest_score_today = 0
 
+    # Need to see what happens here before tournament starts
+    current_round_raw = soup.find_all('div', ['status'])[0].text
+    current_round_html = re.match("Round (\d*).*", current_round_raw)
+
+    # round 5 is tournament over
+    current_round_text = '5' if current_round_html is None else current_round_html.group(1)
+
+    current_round = 0 if get_as_int(current_round_text) is None else get_as_int(current_round_text)
+
+    round_indeces = {
+        0: {
+            'player': 1,
+            'thru': 2,
+        },
+        1: {
+            'standing': 1,
+            'player': 2,
+            'score': 3,
+            'today': 4,
+            'thru': 5,
+        },
+        2: {
+            'standing': 1,
+            'player': 3,
+            'score': 4,
+            'today': 5,
+            'thru': 6,
+        },
+        3: {
+            'standing': 1,
+            'player': 3,
+            'score': 4,
+            'today': 5,
+            'thru': 6,
+        },
+        4: {
+            'standing': 1,
+            'player': 3,
+            'score': 4,
+            'today': 5,
+            'thru': 6,
+        },
+        5: {
+            'standing': 1,
+            'player': 2,
+            'score': 3,
+            'today': 7,
+            'thru': 9,
+        },
+    }
+
     index = 0
+    indeces = round_indeces[current_round]
     for row in rows:
         data = list(row.children)
-        # tournament has not started
-        # TODO: reimpliment this code
+        # Round not started, need to make up certain values
         if len(data) == 3:
             standing = f'{index}' # <-- this is not not technically accurate since they are all tied, but allows for easy filtering
             player = data[1].text
             score = 'E'
             today = None
             thru = data[2].text
-            t_round = 0
-        elif len(data) == 11:
-            standing = data[1].text
-            player = data[2].text
-            score = data[3].text
-            today = None
-            thru = None
-            t_round = 1
         elif len(data) > 5:
-            standing = data[1].text
-            player = data[3].text
-            score = data[4].text
-            today = data[5].text
-            thru = data[6].text
-            t_round = 1
-
+            standing = data[indeces['standing']].text
+            player = data[indeces['player']].text
+            score = data[indeces['score']].text
+            today = data[indeces['today']].text
+            thru = data[indeces['thru']].text
         try:
             today_score = int(today)
             if today_score < lowest_score_today:
@@ -63,29 +102,33 @@ def get_player_data():
             today_score = None
 
         is_cut = False
-        if cutline is not None:
-            score_num = get_score_as_int(score)
+        if cutline is not None and score != 'WD':
+            score_num = get_as_int(score)
             if score_num > cutline:
                 is_cut = True
 
         players.append({"tournament": tournament_title, "player": player, "standing": standing, "score": score,
-                       "today": today, "today_score": today_score, "thru": thru, "hot": False, "is_cut": is_cut, "round": t_round })
+                       "today": today, "today_score": today_score, "thru": thru, "hot": False, "is_cut": is_cut, "round": current_round})
 
         index = index + 1
 
     for player in players:
-        if player['today_score'] is not None:
-            if (player['today_score'] == lowest_score_today) or (player['today_score'] - lowest_score_today < 2):
-                player['hot'] = True
+        if current_round < 5:
+            thru = '18' if player['thru'] == 'F' else player['thru']
+            if player['today_score'] is not None:
+                if (player['today_score'] == lowest_score_today) or (player['today_score'] - lowest_score_today < 3):
+                    player['hot'] = True
+                elif (player['today_score'] < 0 and 'M' not in player['thru'] and player['today_score'] + int(thru) <= 2):
+                    player['hot'] = True
 
     return players
 
 
-def get_score_as_int(score_txt):
+def get_as_int(score_txt):
     """Convert score to int"""
     score_txt = score_txt.replace('+', '')
     if score_txt == 'E':
-        final_score = 0
+        return 0
 
     try:
         final_score = int(score_txt)
@@ -102,10 +145,17 @@ def generate_table(args) -> Table:
 
     first_player = players[0]
 
+    last_col_label = 'Thru'
+
+    if first_player['round'] == 0:
+        last_col_label = 'Tee Time'
+    elif first_player['round'] == 5:
+        last_col_label = 'Earnings'
+
     table = Table(expand=True, highlight=True)
     table.add_column("⛳", justify='center')
     table.add_column(first_player['tournament'], overflow='ellipsis')
-    table.add_column('Thru' if first_player['round'] > 0 else 'Tee Time', justify='right')
+    table.add_column(last_col_label, justify='right')
 
     cutline_added = False
     for player in players:
