@@ -28,7 +28,7 @@ def get_player_data():
 
     # Need to see what happens here before tournament starts
     current_round_raw = soup.find_all('div', ['status'])[0].text
-    current_round_html = re.match("Round (\d*).*", current_round_raw)
+    current_round_html = re.match("Round (\\d*).*", current_round_raw)
 
     # round 5 is tournament over
     current_round_text = '5' if current_round_html is None else current_round_html.group(1)
@@ -115,6 +115,9 @@ def get_player_data():
     for player in players:
         if current_round < 5:
             thru = '18' if player['thru'] == 'F' else player['thru']
+            if '*' in thru:
+                thru = thru.replace('*', '')
+
             if player['today_score'] is not None:
                 if (player['today_score'] == lowest_score_today) or (player['today_score'] - lowest_score_today < 3):
                     player['hot'] = True
