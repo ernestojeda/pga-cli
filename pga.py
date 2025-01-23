@@ -7,9 +7,14 @@ from bs4 import BeautifulSoup
 from rich.live import Live
 from rich.table import Table
 
-def get_player_data():
+players = []
+
+def get_player_data(reset = False):
+    if reset:
+        players.clear()
+
     """Get player data from ESPN"""
-    players=[]
+    # players = []
     headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'}
     html = requests.get("https://www.espn.com/golf/leaderboard", headers=headers).text
     soup = BeautifulSoup(html, features="html.parser")
@@ -107,7 +112,7 @@ def get_player_data():
             if score_num > cutline:
                 is_cut = True
 
-        players.append({"tournament": tournament_title, "player": player, "standing": standing, "score": score,
+        players.append({"display_order": index, "tournament": tournament_title, "player": player, "standing": standing, "score": score,
                        "today": today, "today_score": today_score, "thru": thru, "hot": False, "is_cut": is_cut, "round": current_round})
 
         index = index + 1
@@ -123,8 +128,6 @@ def get_player_data():
                     player['hot'] = True
                 elif (player['today_score'] < 0 and 'M' not in player['thru'] and player['today_score'] + int(thru) <= 2):
                     player['hot'] = True
-
-    return players
 
 
 def get_as_int(score_txt):
@@ -144,7 +147,9 @@ def get_as_int(score_txt):
 
 def generate_table(args) -> Table:
     """Make a new table."""
-    players = get_player_data()
+    # players = get_player_data()
+
+    sorted_players = sorted(players, key=lambda x: x["display_order"])
 
     first_player = players[0]
 
@@ -161,7 +166,7 @@ def generate_table(args) -> Table:
     table.add_column(last_col_label, justify='right')
 
     cutline_added = False
-    for player in players:
+    for player in sorted_players:
         standing = player['standing']
         if standing is not None:
             try:
@@ -209,6 +214,15 @@ def generate_table(args) -> Table:
     return table
 
 
+# Function to roll the order
+def roll_order():
+    # Shift the first element to the end
+    players.append(players.pop(0))
+    # Update the "order" key for each dictionary
+    for index, item in enumerate(players):
+        item["display_order"] = index + 1
+
+
 def get_parser():
     """ setup parser and return parsed command line arguments
     """
@@ -220,6 +234,10 @@ def get_parser():
         required=False,
         default=1000,
         help='Top [n] players to show')
+    parser.add_argument(
+        '--snapshot',
+        action='store_true',
+        help='Just show a snapshot of players do not continuously update')
 
     return parser
 
@@ -228,10 +246,25 @@ def main():
     parser = get_parser()
     args = parser.parse_args()
 
-    with Live(generate_table(args), refresh_per_second=1) as live:
-        while True:
-            time.sleep(30)
-            live.update(generate_table(args))
+    count = 0
+    get_player_data()
+    sleep_time = 0.5
+    with Live(generate_table(args), refresh_per_second=20) as live:
+        if args.snapshot is False:
+            while True:
+                time.sleep(sleep_time)
+                roll_order()
+                if count % 60 == 0:
+                    get_player_data(count % 10 == 0)
+                    count = 0
+                live.update(generate_table(args))
+                count = count + 1
+
+    # with Live(generate_table(args), refresh_per_second=1) as live:
+    #     if args.snapshot is False:
+    #         while True:
+    #             time.sleep(30)
+    #             live.update(generate_table(args))
 
 
 if __name__ == '__main__':
